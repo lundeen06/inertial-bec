@@ -1,11 +1,8 @@
 # BEC Inertial Sensor Simulation
-A high-precision quantum sensor simulation framework that models Bose-Einstein Condensate (BEC) dynamics for inertial measurements. This project includes a comprehensive toolkit for simulating BEC-based accelerometers with applications in navigation systems.
+A high-precision quantum sensor simulation framework that models Bose-Einstein Condensate (BEC) dynamics for inertial measurements. This project includes a comprehensive toolkit for simulating BEC-based accelerometers with applications in inertial navigation systems.
 
 ## Overview
 This simulation framework solves the time-dependent Gross-Pitaevskii equation (GPE) to model BEC behavior under acceleration. By tracking phase evolution and center-of-mass motion, the system can detect and measure inertial forces with quantum-limited precision.
-
-# BEC Inertial Sensor Simulation
-A quantum-mechanical simulation framework for Bose-Einstein Condensate (BEC) based inertial sensing, providing attometer-per-second-squared sensitivity for acceleration measurements.
 
 ## Physical Theory
 
