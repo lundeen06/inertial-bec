@@ -14,24 +14,29 @@ class BECVisualizer:
         self.axes = None
         self._animation = None
         
-    def plot_density(self, title: str = "BEC Density Profile") -> Tuple[plt.Figure, plt.Axes]:
+    def plot_density(self, ax: Optional[plt.Axes] = None, title: str = "BEC Density Profile") -> Tuple[plt.Figure, plt.Axes]:
         """Plot current density profile."""
-        if self.fig is None:
-            self.fig, self.axes = plt.subplots(figsize=(10, 6))
+        if ax is None:
+            if self.fig is None:
+                self.fig, self.axes = plt.subplots(figsize=(10, 6))
+            ax = self.axes
+        else:
+            self.axes = ax
+            self.fig = ax.figure
             
-        self.axes.clear()
+        ax.clear()
         density = self.bec_state.density
         grid = self.bec_state.get_physical_grid() * 1e6  # Convert to micrometers
         
-        self.axes.plot(grid, density, 'b-', label='Density')
-        self.axes.fill_between(grid, density, alpha=0.3)
+        ax.plot(grid, density, 'b-', label='Density')
+        ax.fill_between(grid, density, alpha=0.3)
         
-        self.axes.set_xlabel('Position (μm)')
-        self.axes.set_ylabel('Density (a.u.)')
-        self.axes.set_title(title)
-        self.axes.grid(True)
+        ax.set_xlabel('Position (μm)')
+        ax.set_ylabel('Density (a.u.)')
+        ax.set_title(title)
+        ax.grid(True)
         
-        return self.fig, self.axes
+        return self.fig, ax
     
     def plot_phase(self) -> Tuple[plt.Figure, plt.Axes]:
         """Plot current phase profile."""

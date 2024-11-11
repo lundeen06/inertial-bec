@@ -1,269 +1,287 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation, PillowWriter
-from typing import Optional, List, Tuple, Callable
+from matplotlib.animation import FuncAnimation
+from typing import List, Optional, Tuple
+import matplotlib.animation as animation
 from dataclasses import dataclass
-from ..core.wave_function import WaveFunction
-from ..utils.constants import to_physical
+from ..core.bec_state import BECState
+from ..utils.numerical_methods import GPESolver
+
 
 @dataclass
 class BECAnimator:
-    """
-    Class for creating animations of BEC dynamics.
-    Supports various types of animations including density evolution,
-    phase dynamics, and real-time measurements.
-    """
+    """Class for creating animations of BEC evolution."""
     
-    def __init__(self):
-        """Initialize animation settings."""
-        self.fig = None
-        self.ax = None
-        self._animation = None
-        self.is_running = False
-        
-        # Default style settings
-        plt.style.use('seaborn')
-        self.default_figsize = (10, 6)
-        self.default_fps = 30
-        
-    def setup_figure(self, title: str = "") -> None:
-        """Set up the figure and axes for animation."""
-        self.fig, self.ax = plt.subplots(figsize=self.default_figsize)
-        self.ax.set_title(title)
-        self.ax.grid(True)
-    
-    def density_evolution(self, 
-                        wave_functions: List[WaveFunction],
-                        times: np.ndarray,
-                        interval: int = 50) -> FuncAnimation:
+    def create_evolution_animation(self,
+                             times: np.ndarray,
+                             states: List[np.ndarray],
+                             interval: int = 50,
+                             fig: Optional[plt.Figure] = None,
+                             mode: str = 'density') -> animation.Animation:
         """
-        Create animation of density evolution.
+        Create animation of BEC evolution.
         
         Args:
-            wave_functions: List of wavefunctions at different times
             times: Array of time points
+            states: List of wavefunctions at each time
+            interval: Time between frames in milliseconds
+            fig: Optional figure to use
+            mode: Type of visualization ('density', 'phase', or 'both')
+        """
+        # Input validation
+        if not states or len(states) == 0:
+            raise ValueError("States list cannot be empty")
+        if len(times) != len(states):
+            raise ValueError(f"Mismatch between times ({len(times)}) and states ({len(states)})")
+        
+        # Create figure if not provided
+        if fig is None:
+            if mode == 'both':
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+            else:
+                fig, ax1 = plt.subplots(figsize=(8, 5))
+                ax2 = None
+        
+        # Initialize plot lines
+        grid = np.linspace(-10, 10, len(states[0]))
+        density_line, = ax1.plot([], [], 'b-', label='Density')
+        
+        # Store fill artist for proper removal
+        fill_artist = ax1.fill_between(grid, np.zeros_like(grid), alpha=0.3, color='blue')
+        
+        if mode == 'both':
+            phase_line, = ax2.plot([], [], 'r-', label='Phase')
+        
+        # Set axis properties
+        max_density = max([np.max(np.abs(psi)**2) for psi in states])
+        ax1.set_xlim(grid.min(), grid.max())
+        ax1.set_ylim(0, 1.2 * max_density)
+        ax1.set_xlabel('Position (trap units)')
+        ax1.set_ylabel('Density')
+        ax1.grid(True)
+        
+        if mode == 'both':
+            ax2.set_xlim(grid.min(), grid.max())
+            ax2.set_ylim(-np.pi, np.pi)
+            ax2.set_xlabel('Position (trap units)')
+            ax2.set_ylabel('Phase (rad)')
+            ax2.grid(True)
+        
+        # Time display
+        time_text = ax1.text(0.02, 0.95, '', transform=ax1.transAxes)
+        
+        def safe_remove_artist(artist):
+            """Safely remove an artist if it exists in the axes"""
+            try:
+                artist.remove()
+            except:
+                pass
+        
+        def init():
+            """Initialize animation"""
+            density_line.set_data([], [])
+            safe_remove_artist(fill_artist)
+            
+            if mode == 'both':
+                phase_line.set_data([], [])
+                
+            time_text.set_text('')
+            artists = [density_line, time_text]
+            if mode == 'both':
+                artists.append(phase_line)
+            return artists
+        
+        def animate(frame):
+            """Animation function"""
+            try:
+                # Update density plot
+                density = np.abs(states[frame])**2
+                density_line.set_data(grid, density)
+                
+                # Update fill_between
+                for coll in ax1.collections:
+                    safe_remove_artist(coll)
+                ax1.fill_between(grid, density, alpha=0.3, color='blue')
+                
+                if mode == 'both':
+                    # Update phase plot
+                    phase = np.angle(states[frame])
+                    phase_line.set_data(grid, phase)
+                
+                # Update time display
+                time_text.set_text(f'Time: {times[frame]*1e3:.1f} ms')
+                
+                artists = [density_line, time_text]
+                if mode == 'both':
+                    artists.append(phase_line)
+                return artists
+                
+            except Exception as e:
+                print(f"Error in animation frame {frame}: {str(e)}")
+                return []
+        
+        try:
+            anim = FuncAnimation(
+                fig=fig,
+                func=animate,
+                init_func=init,
+                frames=len(times),
+                interval=interval,
+                blit=True,
+                repeat=False  # Add this if you don't want the animation to loop
+            )
+            
+            plt.close(fig)  # Prevent display of static figure
+            return anim
+            
+        except Exception as e:
+            print(f"Error creating animation: {str(e)}")
+            plt.close(fig)
+            raise
+    def create_phase_space_animation(self,
+                                   times: np.ndarray,
+                                   states: List[np.ndarray],
+                                   interval: int = 50,
+                                   momentum_spread: float = 0.1) -> animation.Animation:
+        """
+        Create animation of phase space evolution.
+        
+        Args:
+            times: Array of time points
+            states: List of wavefunctions at each time
+            interval: Time between frames in milliseconds
+            momentum_spread: Width of momentum uncertainty
+        """
+        fig, ax = plt.subplots(figsize=(8, 8))
+        
+        grid = np.linspace(-10, 10, len(states[0]))
+        dx = grid[1] - grid[0]
+        
+        # Set up scatter plot
+        scatter = ax.scatter([], [], c=[], cmap='viridis', alpha=0.6, s=1)
+        mean_line, = ax.plot([], [], 'r--', alpha=0.5, label='Mean trajectory')
+        
+        # Set axis properties
+        max_pos = np.max(np.abs(grid))
+        max_mom = 2.0  # Estimated maximum momentum
+        limit = max(max_pos, max_mom) * 1.1
+        
+        ax.set_xlim(-limit, limit)
+        ax.set_ylim(-limit, limit)
+        ax.set_aspect('equal')
+        ax.grid(True, alpha=0.3)
+        
+        # Add uncertainty principle guidelines
+        x_range = np.linspace(-limit, limit, 100)
+        uncertainty_bound = 0.5/np.abs(x_range)
+        ax.plot(x_range, uncertainty_bound, 'k:', alpha=0.3, label='ΔxΔp = ℏ/2')
+        ax.plot(x_range, -uncertainty_bound, 'k:', alpha=0.3)
+        
+        ax.set_xlabel('Position (trap units)')
+        ax.set_ylabel('Momentum (ℏ/a₀)')
+        ax.legend()
+        
+        time_text = ax.text(0.02, 0.95, '', transform=ax.transAxes)
+        
+        def init():
+            scatter.set_offsets(np.zeros((0, 2)))
+            scatter.set_array(np.array([]))
+            mean_line.set_data([], [])
+            time_text.set_text('')
+            return [scatter, mean_line, time_text]
+        
+        def animate(i):
+            # Calculate phase space distribution
+            phase = np.unwrap(np.angle(states[i]))
+            p_mean = np.gradient(phase, dx)
+            density = np.abs(states[i])**2
+            
+            # Create points with quantum spread
+            n_points = 1000
+            x_points = []
+            p_points = []
+            weights = []
+            
+            for x, p, rho in zip(grid, p_mean, density):
+                if rho > 1e-6 * np.max(density):
+                    n_local = int(n_points * rho / np.max(density))
+                    x_local = np.random.normal(x, 0.1, n_local)
+                    p_local = np.random.normal(p, momentum_spread, n_local)
+                    
+                    x_points.extend(x_local)
+                    p_points.extend(p_local)
+                    weights.extend([rho/np.max(density)] * n_local)
+            
+            # Update plots
+            points = np.column_stack((x_points, p_points))
+            scatter.set_offsets(points)
+            scatter.set_array(np.array(weights))
+            
+            mean_line.set_data(grid, p_mean)
+            time_text.set_text(f'Time: {times[i]*1e3:.1f} ms')
+            
+            return [scatter, mean_line, time_text]
+        
+        anim = FuncAnimation(fig, animate, init_func=init,
+                           frames=len(times), interval=interval,
+                           blit=True)
+        
+        plt.close(fig)
+        return anim
+    
+    def create_density_phase_animation(self,
+                                     bec: BECState,
+                                     times: np.ndarray,
+                                     solver: 'GPESolver',
+                                     potential: np.ndarray,
+                                     interval: int = 50) -> animation.Animation:
+        """
+        Create real-time animation during BEC evolution.
+        
+        Args:
+            bec: Initial BEC state
+            times: Time points for evolution
+            solver: GPE solver instance
+            potential: Trap potential
             interval: Time between frames in milliseconds
         """
-        if self.fig is None:
-            self.setup_figure("BEC Density Evolution")
-            
-        # Convert to physical units
-        x_physical = to_physical(wave_functions[0].grid, 'length', 1.0) * 1e6  # μm
-        times_ms = times * 1e3  # Convert to milliseconds
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
         
-        # Set up plot elements
-        line, = self.ax.plot([], [], 'b-', lw=2, label='Density')
-        fill = self.ax.fill_between([], [], alpha=0.3, color='blue')
-        time_text = self.ax.text(0.02, 0.95, '', transform=self.ax.transAxes)
+        # Initialize plots
+        grid = bec._grid
+        density_line, = ax1.plot([], [], 'b-', label='Density')
+        phase_line, = ax2.plot([], [], 'r-', label='Phase')
         
-        # Set axis labels and limits
-        self.ax.set_xlabel('Position (μm)')
-        self.ax.set_ylabel('Density')
-        self.ax.set_xlim(x_physical.min(), x_physical.max())
-        max_density = max([np.max(wf.density) for wf in wave_functions])
-        self.ax.set_ylim(0, 1.1 * max_density)
-        
-        def init():
-            """Initialize animation."""
-            line.set_data([], [])
-            time_text.set_text('')
-            return line, time_text
-            
-        def animate(i):
-            """Update animation frame."""
-            density = wave_functions[i].density
-            line.set_data(x_physical, density)
-            
-            # Update fill
-            fill.remove()
-            self.ax.fill_between(x_physical, density, alpha=0.3, color='blue')
-            
-            time_text.set_text(f'Time: {times_ms[i]:.1f} ms')
-            return line, time_text
-        
-        self._animation = FuncAnimation(
-            self.fig, animate, init_func=init,
-            frames=len(wave_functions), interval=interval, blit=True
-        )
-        
-        return self._animation
-    
-    def phase_evolution(self,
-                       wave_functions: List[WaveFunction],
-                       times: np.ndarray,
-                       interval: int = 50) -> FuncAnimation:
-        """Create animation of phase evolution."""
-        if self.fig is None:
-            self.setup_figure("BEC Phase Evolution")
-            
-        x_physical = to_physical(wave_functions[0].grid, 'length', 1.0) * 1e6
-        times_ms = times * 1e3
-        
-        # Create phase plot
-        line, = self.ax.plot([], [], 'r-', lw=2, label='Phase')
-        time_text = self.ax.text(0.02, 0.95, '', transform=self.ax.transAxes)
-        
-        self.ax.set_xlabel('Position (μm)')
-        self.ax.set_ylabel('Phase (rad)')
-        self.ax.set_xlim(x_physical.min(), x_physical.max())
-        
-        # Find phase range
-        all_phases = [np.unwrap(wf.phase) for wf in wave_functions]
-        phase_min = min([np.min(p) for p in all_phases])
-        phase_max = max([np.max(p) for p in all_phases])
-        self.ax.set_ylim(phase_min, phase_max)
-        
-        def init():
-            line.set_data([], [])
-            time_text.set_text('')
-            return line, time_text
-            
-        def animate(i):
-            phase = np.unwrap(wave_functions[i].phase)
-            line.set_data(x_physical, phase)
-            time_text.set_text(f'Time: {times_ms[i]:.1f} ms')
-            return line, time_text
-        
-        self._animation = FuncAnimation(
-            self.fig, animate, init_func=init,
-            frames=len(wave_functions), interval=interval, blit=True
-        )
-        
-        return self._animation
-    
-    def real_time_measurement(self,
-                            wave_functions: List[WaveFunction],
-                            times: np.ndarray,
-                            measurement_func: Callable[[WaveFunction], float],
-                            measurement_label: str,
-                            interval: int = 50) -> FuncAnimation:
-        """
-        Create animation showing real-time measurement evolution.
-        
-        Args:
-            measurement_func: Function that computes measurement from wavefunction
-            measurement_label: Label for the measured quantity
-        """
-        if self.fig is None:
-            self.setup_figure(f"Real-time {measurement_label}")
-        
-        times_ms = times * 1e3
-        measurements = [measurement_func(wf) for wf in wave_functions]
-        
-        # Set up both wavefunction and measurement plots
-        self.fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
-        
-        # Wavefunction plot
-        density_line, = ax1.plot([], [], 'b-', lw=2, label='Density')
-        ax1.set_xlabel('Position (μm)')
+        # Set axis properties
+        ax1.set_xlim(grid.min(), grid.max())
+        ax1.set_ylim(0, 1.2 * np.max(bec.density))
+        ax1.set_xlabel('Position (trap units)')
         ax1.set_ylabel('Density')
+        ax1.grid(True)
         
-        # Measurement plot
-        measurement_line, = ax2.plot([], [], 'g-', lw=2, label=measurement_label)
-        ax2.set_xlabel('Time (ms)')
-        ax2.set_ylabel(measurement_label)
+        ax2.set_xlim(grid.min(), grid.max())
+        ax2.set_ylim(-np.pi, np.pi)
+        ax2.set_xlabel('Position (trap units)')
+        ax2.set_ylabel('Phase (rad)')
+        ax2.grid(True)
         
-        # Set axis limits
-        x_physical = to_physical(wave_functions[0].grid, 'length', 1.0) * 1e6
-        ax1.set_xlim(x_physical.min(), x_physical.max())
-        ax1.set_ylim(0, 1.1 * max([np.max(wf.density) for wf in wave_functions]))
+        time_text = ax1.text(0.02, 0.95, '', transform=ax1.transAxes)
         
-        ax2.set_xlim(times_ms[0], times_ms[-1])
-        ax2.set_ylim(min(measurements) * 0.9, max(measurements) * 1.1)
-        
-        def init():
-            density_line.set_data([], [])
-            measurement_line.set_data([], [])
-            return density_line, measurement_line
+        def animate(frame):
+            t = times[frame]
             
-        def animate(i):
-            # Update density plot
-            density_line.set_data(x_physical, wave_functions[i].density)
+            # Evolve state
+            solver.split_step(bec._wavefunction, potential)
             
-            # Update measurement plot
-            measurement_line.set_data(times_ms[:i+1], measurements[:i+1])
-            return density_line, measurement_line
-        
-        self._animation = FuncAnimation(
-            self.fig, animate, init_func=init,
-            frames=len(wave_functions), interval=interval, blit=True
-        )
-        
-        return self._animation
-    
-    def save_animation(self, filename: str, fps: int = 30, 
-                      dpi: int = 200) -> None:
-        """Save animation to file."""
-        if self._animation is None:
-            raise ValueError("No animation to save. Create an animation first.")
+            # Update plots
+            density_line.set_data(grid, bec.density)
+            phase_line.set_data(grid, np.angle(bec._wavefunction))
+            time_text.set_text(f'Time: {t*1e3:.1f} ms')
             
-        writer = PillowWriter(fps=fps)
-        self._animation.save(filename, writer=writer, dpi=dpi)
-    
-    def combine_measurements(self,
-                           wave_functions: List[WaveFunction],
-                           times: np.ndarray,
-                           measurements: List[Tuple[Callable, str]],
-                           interval: int = 50) -> FuncAnimation:
-        """
-        Create animation with multiple synchronized measurements.
+            return [density_line, phase_line, time_text]
         
-        Args:
-            measurements: List of (measurement_function, label) tuples
-        """
-        if self.fig is None:
-            self.setup_figure("Combined Measurements")
+        anim = FuncAnimation(fig, animate, frames=len(times),
+                           interval=interval, blit=True)
         
-        n_measurements = len(measurements)
-        fig, axs = plt.subplots(n_measurements + 1, 1, 
-                               figsize=(10, 4*(n_measurements + 1)))
-        
-        times_ms = times * 1e3
-        x_physical = to_physical(wave_functions[0].grid, 'length', 1.0) * 1e6
-        
-        # Setup density plot
-        density_line, = axs[0].plot([], [], 'b-', lw=2, label='Density')
-        axs[0].set_xlabel('Position (μm)')
-        axs[0].set_ylabel('Density')
-        axs[0].set_xlim(x_physical.min(), x_physical.max())
-        axs[0].set_ylim(0, 1.1 * max([np.max(wf.density) for wf in wave_functions]))
-        
-        # Setup measurement plots
-        measurement_lines = []
-        measurement_data = []
-        
-        for i, (func, label) in enumerate(measurements, 1):
-            line, = axs[i].plot([], [], '-', lw=2, label=label)
-            measurement_lines.append(line)
-            measurement_data.append([func(wf) for wf in wave_functions])
-            
-            axs[i].set_xlabel('Time (ms)')
-            axs[i].set_ylabel(label)
-            axs[i].set_xlim(times_ms[0], times_ms[-1])
-            axs[i].set_ylim(min(measurement_data[-1]) * 0.9,
-                           max(measurement_data[-1]) * 1.1)
-            axs[i].grid(True)
-            
-        def init():
-            density_line.set_data([], [])
-            for line in measurement_lines:
-                line.set_data([], [])
-            return [density_line] + measurement_lines
-            
-        def animate(i):
-            # Update density plot
-            density_line.set_data(x_physical, wave_functions[i].density)
-            
-            # Update measurement plots
-            for line, data in zip(measurement_lines, measurement_data):
-                line.set_data(times_ms[:i+1], data[:i+1])
-            
-            return [density_line] + measurement_lines
-        
-        self._animation = FuncAnimation(
-            fig, animate, init_func=init,
-            frames=len(wave_functions), interval=interval, blit=True
-        )
-        
-        plt.tight_layout()
-        return self._animation
+        plt.close(fig)
+        return anim

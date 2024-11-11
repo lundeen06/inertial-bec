@@ -31,8 +31,8 @@ class GPESolver:
         self.K = 0.5 * self.k**2
         
         # Initialize FFT plans (if using numpy.fft)
-        self.forward_transform = lambda x: np.fft.fft(x)
-        self.inverse_transform = lambda x: np.fft.ifft(x)
+        self.forward_transform = lambda x: np.fft.fft(x.astype(np.complex128))
+        self.inverse_transform = lambda x: np.fft.ifft(x.astype(np.complex128))
     
     def split_step(self, psi: np.ndarray, V: np.ndarray, 
                   steps: int = 1) -> np.ndarray:
@@ -52,7 +52,7 @@ class GPESolver:
         
         for _ in range(steps):
             # Half step in position space
-            psi *= np.exp(-0.5j * self.dt * 
+            psi = psi.astype(np.complex128) * np.exp(-0.5j * self.dt * 
                          (V + self.g * np.abs(psi)**2))
             
             # Full step in momentum space

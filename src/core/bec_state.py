@@ -43,8 +43,8 @@ class BECState:
         # Harmonic oscillator ground state
         x = self._grid
         sigma = 1.0  # Ground state width in harmonic units
-        psi = (1/(np.pi*sigma**2))**(1/4) * np.exp(-x**2/(2*sigma**2))
-        
+        psi = ((1/(np.pi*sigma**2))**(1/4) * np.exp(-x**2/(2*sigma**2))).astype(np.complex128)
+                
         # Normalize
         psi = psi / np.sqrt(np.sum(np.abs(psi)**2) * self.dx)
         

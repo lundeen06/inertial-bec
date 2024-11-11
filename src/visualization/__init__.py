@@ -5,10 +5,10 @@ phase plots, and animations.
 
 from .density_plot import BECVisualizer
 from .phase_plot import PhaseVisualizer
-from .animation import AnimationVisualizer
+from .animation import BECAnimator
 
 __all__ = [
     "BECVisualizer",
     "PhaseVisualizer",
-    "AnimationVisualizer"
+    "BECAnimator"
 ]
