@@ -1,0 +1,82 @@
+# BEC Inertial Sensor Simulation Configuration
+
+# Grid parameters
+grid:
+  points: 256          # Number of spatial grid points
+  size: 20.0          # Size of simulation box in characteristic lengths
+  dimensions: 1       # Number of spatial dimensions (1D for now)
+
+# Time evolution parameters
+time:
+  dt: 1.0e-4         # Time step in characteristic units
+  total_duration: 0.1 # Total simulation time in seconds
+  save_interval: 100  # Steps between saves
+
+# Trap parameters
+trap:
+  frequency: 100.0    # Trap frequency in Hz
+  center: [0.0, 0.0, 0.0]  # Trap center position
+  anisotropy: [1.0, 1.0, 1.0]  # Relative trap frequencies
+  depth: 1.0e-6      # Trap depth in Kelvin
+
+# Physical parameters
+physics:
+  atom_number: 1.0e5     # Number of atoms in BEC
+  interaction_strength: 1.0  # Dimensionless interaction parameter
+  temperature: 1.0e-9      # Temperature in Kelvin
+  scattering_length: 5.77e-9  # s-wave scattering length for Rb87 in meters
+
+# Sensor parameters
+sensor:
+  sensitivity: 1.0e-6      # Target acceleration sensitivity in m/s²
+  measurement_time: 0.1    # Measurement duration in seconds
+  noise_level: 1.0e-3     # Relative technical noise level
+  bandwidth: 100.0        # Measurement bandwidth in Hz
+
+# Acceleration parameters
+acceleration:
+  min: -1.0e-4           # Minimum acceleration in m/s²
+  max: 1.0e-4            # Maximum acceleration in m/s²
+  steps: 10              # Number of test points for calibration
+
+# Calibration settings
+calibration:
+  duration: 0.1          # Duration of each calibration run
+  repeats: 5             # Number of repeated measurements
+  known_values: [-5.0e-5, -2.5e-5, 0.0, 2.5e-5, 5.0e-5]  # Known accelerations for calibration
+
+# Numerical solver settings
+solver:
+  method: "split-step"   # Numerical method (split-step or runge-kutta)
+  error_tolerance: 1.0e-6  # Error tolerance for adaptive stepping
+  max_iterations: 1000     # Maximum iterations for ground state
+  convergence_tolerance: 1.0e-10  # Energy convergence tolerance
+
+# Output settings
+output:
+  directory: "output"      # Output directory
+  save_states: true       # Whether to save intermediate states
+  save_format: "npz"      # File format for saving data
+  live_visualization: true  # Enable real-time plotting
+  plot_interval: 100       # Steps between plot updates
+
+# Visualization settings
+visualization:
+  figure_size: [10, 6]    # Figure size in inches
+  dpi: 100               # Plot resolution
+  colormap: "viridis"    # Colormap for density plots
+  animation_fps: 30      # Frames per second for animations
+
+# Advanced options
+advanced:
+  use_gpu: false         # Enable GPU acceleration if available
+  precision: "double"    # Numerical precision (single/double)
+  threads: 4            # Number of computation threads
+  seed: 42              # Random seed for noise generation
+
+# Debug options
+debug:
+  verbose: true         # Enable detailed output
+  save_diagnostics: true  # Save additional diagnostic information
+  check_conservation: true  # Check energy/norm conservation
+  profiling: false      # Enable performance profiling
